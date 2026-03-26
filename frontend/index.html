@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOLE — Sport Shoes Catalog</title>
+
+  <!-- Google Fonts: display + body pairing -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300&display=swap" rel="stylesheet" />
+
+  <!-- jQuery (live search) -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <!-- Axios (API calls) -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  Vue 3 App Root                                            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ── HEADER ────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-big">SOLE</span>
+        <span class="logo-sub">Sport Shoes Catalog</span>
+      </div>
+      <nav class="header-nav">
+        <button
+          :class="['nav-btn', { active: view === 'add' }]"
+          @click="switchView('add')">
+          <span class="btn-icon">＋</span> Add Product
+        </button>
+        <button
+          :class="['nav-btn', { active: view === 'list' }]"
+          @click="switchView('list')">
+          <span class="btn-icon">◎</span> View Products
+        </button>
+      </nav>
+    </div>
+    <!-- animated underline bar -->
+    <div class="header-accent"></div>
+  </header>
+
+  <!-- ── MAIN CONTENT ──────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- ====================================================== -->
+    <!--  VIEW: ADD PRODUCT                                      -->
+    <!-- ====================================================== -->
+    <section v-if="view === 'add'" class="section-add">
+      <div class="section-title-block">
+        <h2 class="section-title">New Drop</h2>
+        <p class="section-sub">Register a new pair to the catalog</p>
+      </div>
+
+      <!-- Global success banner -->
+      <div v-if="addSuccess" class="alert alert-success">
+        ✔ Product added to the catalog!
+      </div>
+
+      <!-- Global server error -->
+      <div v-if="serverError" class="alert alert-error">
+        ✖ {{ serverError }}
+      </div>
+
+      <form class="add-form" @submit.prevent="submitProduct" novalidate>
+
+        <!-- Name -->
+        <div class="form-group" :class="{ 'has-error': formErrors.name }">
+          <label for="f-name">Shoe Name</label>
+          <input
+            id="f-name"
+            type="text"
+            v-model.trim="form.name"
+            placeholder="e.g. Nike Air Max 270"
+            @input="clearError('name')" />
+          <span class="field-error" v-if="formErrors.name">{{ formErrors.name }}</span>
+        </div>
+
+        <!-- Description -->
+        <div class="form-group" :class="{ 'has-error': formErrors.description }">
+          <label for="f-desc">Description</label>
+          <textarea
+            id="f-desc"
+            v-model.trim="form.description"
+            placeholder="Short product description…"
+            rows="3"
+            @input="clearError('description')"></textarea>
+          <span class="field-error" v-if="formErrors.description">{{ formErrors.description }}</span>
+        </div>
+
+        <!-- Price -->
+        <div class="form-group" :class="{ 'has-error': formErrors.price }">
+          <label for="f-price">Price (USD $)</label>
+          <input
+            id="f-price"
+            type="number"
+            v-model="form.price"
+            placeholder="0.00"
+            step="0.01"
+            min="0.01"
+            @input="clearError('price')" />
+          <span class="field-error" v-if="formErrors.price">{{ formErrors.price }}</span>
+        </div>
+
+        <!-- Image URL -->
+        <div class="form-group" :class="{ 'has-error': formErrors.image_url }">
+          <label for="f-img">Image URL</label>
+          <input
+            id="f-img"
+            type="url"
+            v-model.trim="form.image_url"
+            placeholder="https://example.com/shoe.jpg"
+            @input="clearError('image_url')" />
+          <span class="field-error" v-if="formErrors.image_url">{{ formErrors.image_url }}</span>
+        </div>
+
+        <!-- Image preview -->
+        <div class="img-preview" v-if="form.image_url">
+          <img :src="form.image_url" alt="Preview" @error="imgPreviewError = true" v-if="!imgPreviewError" />
+          <p class="preview-broken" v-else>⚠ Could not load image preview.</p>
+        </div>
+
+        <button type="submit" class="submit-btn" :disabled="submitting">
+          <span v-if="!submitting">Add to Catalog →</span>
+          <span v-else class="spinner"></span>
+        </button>
+      </form>
+    </section>
+
+
+    <!-- ====================================================== -->
+    <!--  VIEW: PRODUCT LIST                                     -->
+    <!-- ====================================================== -->
+    <section v-if="view === 'list'" class="section-list">
+      <div class="section-title-block">
+        <h2 class="section-title">The Collection</h2>
+        <p class="section-sub">{{ products.length }} pair{{ products.length !== 1 ? 's' : '' }} in stock</p>
+      </div>
+
+      <!-- Live search input (jQuery handles the request) -->
+      <div class="search-wrap">
+        <span class="search-icon">⌕</span>
+        <input
+          id="live-search"
+          type="text"
+          class="search-input"
+          placeholder="Search by name…"
+          autocomplete="off" />
+        <span class="search-clear" id="search-clear" v-show="searchQuery" @click="clearSearch">✕</span>
+      </div>
+
+      <!-- Loading state -->
+      <div v-if="loadingProducts" class="state-msg">
+        <div class="loader-ring"></div>
+        <p>Loading catalog…</p>
+      </div>
+
+      <!-- Error state -->
+      <div v-else-if="listError" class="alert alert-error">
+        ✖ {{ listError }}
+      </div>
+
+      <!-- Empty state -->
+      <div v-else-if="products.length === 0" class="state-msg empty">
+        <div class="empty-icon">👟</div>
+        <p>No shoes found. Try a different search or add a product.</p>
+      </div>
+
+      <!-- Product grid -->
+      <div v-else class="product-grid">
+        <div
+          class="product-card"
+          v-for="product in products"
+          :key="product.id">
+          <div class="card-img-wrap">
+            <img
+              :src="product.image_url"
+              :alt="product.name"
+              class="card-img"
+              @error="$event.target.src='https://placehold.co/400x300?text=No+Image'" />
+            <div class="card-badge">#{{ product.id }}</div>
+          </div>
+          <div class="card-body">
+            <h3 class="card-name">{{ product.name }}</h3>
+            <p class="card-desc">{{ product.description }}</p>
+            <div class="card-footer">
+              <span class="card-price">${{ Number(product.price).toFixed(2) }}</span>
+              <span class="card-tag">In Stock</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── FOOTER ────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <p>SOLE Catalog &nbsp;·&nbsp; CS Engineering Project &nbsp;·&nbsp; 2024</p>
+  </footer>
+
+</div><!-- #app -->
+
+<script src="app.js"></script>
+</body>
+</html>
